@@ -1,102 +1,138 @@
 import numpy as np
+import pandas as pd
+from data import clean, get_data, clean_and_read
+
+np.random.seed(1)
 
 
-def tanh(val):
-    return np.tanh(val)
+class Sigmoid:
+
+    @staticmethod
+    def apply(x):
+        return 1 / (1 + np.exp(-x))
+
+    @staticmethod
+    def deriv(x):
+        return x * (1 - x)
 
 
-def inverse_tanh(val):
-    return 1 - np.tanh(val) ** 2
+class TanH:
+    @staticmethod
+    def apply(x):
+        return np.tanh(x)
+
+    @staticmethod
+    def deriv(x):
+        return 1 - np.tanh(x) ** 2
 
 
-def sigmoid(val):
-    return 1 / (1 + np.exp(-val))
+class Linear:
+    @staticmethod
+    def apply(x):
+        return x
+
+    @staticmethod
+    def deriv(x):
+        return 1
 
 
-def inverse_sigmoid(val):
-    return val * (1 - val)
+class Adaline:
+    @staticmethod
+    def calculate_output_layer(expected, prediction):
+        return expected - prediction
+
+    def calculate_hidden_layer(self):
+        return
 
 
-def calc_delta(error, layer, inverse):
-    return error * inverse(layer)
+class Layer(object):
+    def __init__(self, inputs, units, activation, name=''):
+        self.inputs = inputs
+        self.units = units
+        self.activation = activation
+        self.name = name
+
+        # self.weights = 2 * np.random.random((self.inputs, self.units)) - 1
+        self.weights = np.random.normal(0, 0.01, (self.inputs, self.units))
+
+    def activate(self, input_values):
+        if len(input_values[1]) != self.inputs:
+            raise Exception('Input not the correct length. Given {} expected {}'.format(len(input_values), self.inputs))
+
+        return self.activation.apply(input_values.dot(self.weights))
 
 
-def calc_error(delta, weights):
-    return delta.dot(weights.T)
+class Network(object):
+    def __init__(self, layers, learning_rate=1e-3):
+        self.layers = layers
+        self.learning_rate = learning_rate
+
+        self.layer_data = []
+
+    def run(self, data):
+        self.layer_data = []
+        self.layer_data.append(data)
+        for layer in self.layers:
+            self.layer_data.append(layer.activate(self.layer_data[-1]))
+
+        return self.layer_data[-1]
+
+    def backpropagate(self, expected):
+        error = expected - self.layer_data[-1]
+        delta = error * self.layers[-1].activation.deriv(self.layer_data[-1])
+        deltas = [delta]
+        for l in range(len(self.layers) - 1, 0, -1):
+            layer = self.layers[l]
+            errors = deltas[-1].dot(layer.weights.T)
+            deltas.append(errors * layer.activation.deriv(self.layer_data[l]))
+
+        for i, layer in enumerate(self.layers):
+            layer.weights += self.layer_data[i].T.dot(deltas[-(i + 1)] * self.learning_rate)
 
 
-def next_layer(this_layer, weights, activation):
-    return activation(this_layer.dot(weights))
-
-
-def new_weights(weights, layer, next_layer_delta):
-    return weights + layer.T.dot(next_layer_delta) * LEARNING_RATE
-
-
-INPUT_NODES = 3
-HIDDEN_NODES = 4
+INPUT_NODES = 5
+HIDDEN_NODES = 8
 OUTPUT_NODES = 1
-LEARNING_RATE = 0.01
-
-x = np.array([
-    [1, 1, 4],
-    [1, 2, 9],
-    [1, 5, 6],
-    [1, 4, 5],
-    [1, 6, 0.7],
-    [1, 1, 1.5]
-])
-
-y = np.array([
-    [1],
-    [1],
-    [1],
-    [1],
-    [0],
-    [0]
-])
+LEARNING_RATE = 1e-4
+TRAINING_PERCENTAGE = 0.6
 
 
-w1 = np.random.random((INPUT_NODES, HIDDEN_NODES))  # (3,4) matrix. 3 inputs, 4 hidden nodes
-w2 = np.random.random((HIDDEN_NODES, OUTPUT_NODES))  # (4,1) matrix. 4 hidden nodes, 1 output
+def main():
+    df = clean_and_read()
 
-c = 0
-for _ in range(1000000):
-    done = False
-    for j, i in enumerate(x):
-        l0 = np.array([i])  # (3,) matrix. 3 inputs
+    values = df.values
+    np.random.shuffle(values)
 
-        l1 = next_layer(l0, w1, sigmoid)  # (4,) matrix. 4 nodes
+    train = values[:int(len(values) * TRAINING_PERCENTAGE)]
+    test = values[int(len(values) * TRAINING_PERCENTAGE):]
 
-        l2 = next_layer(l1, w2, sigmoid)  # (1,) matrix. 1 node
+    x_test = test[:, :-1]
+    y_test = test[:, -1:]
+    x_train = train[:, :-1]
+    y_train = train[:, -1:]
 
-        l2_error = y[j] - l2
+    layer_i = Layer(inputs=len(x_train[1]), units=8, activation=Sigmoid, name='input')
+    layer_h = Layer(inputs=8, units=8, activation=Sigmoid, name='hidden')
+    layer_o = Layer(inputs=8, units=1, activation=Linear, name='output')
 
-        if c % 100000 == 0:
-            print('Error: {}'.format(np.abs(np.mean(l2_error))))
+    network = Network(layers=[layer_i, layer_h, layer_o], learning_rate=LEARNING_RATE)
 
-        l2_delta = calc_delta(l2_error, l2, inverse_sigmoid)
+    for i in range(5000000):
+        prediction = network.run(x_train)
+        network.backpropagate(y_train)
+        if i % 10000 == 1:
+            error = np.mean(np.abs(y_train - prediction))
+            print('Average Error: {}'.format(error))
 
-        l1_error = calc_error(l2_delta, w2)
-        l1_delta = calc_delta(l1_error, l1, inverse_sigmoid)
+    predicted = network.run(x_test)
+    error = y_test - predicted
 
-        w2 = new_weights(w2, l1, l2_delta)
-        w1 = new_weights(w1, l0, l1_delta)
-        c += 1
+    # for actual, prediction in zip(y_test, predicted):
+    #     print('Expected: {} | Prediction: {} | Error: {}'.format(actual, prediction, np.mean(np.abs(actual-prediction))))
 
-        if np.abs(np.mean(l2_error)) < 0.005:
-            done = True
-            print(np.abs(np.mean(l2_error)))
-            break
+    print('Error: {}'.format(np.mean(np.abs(error))))
 
-    if done:
-        break
 
-for i in range(len(x)):
-    l0 = np.array(x[i])
-    l1 = next_layer(l0, w1, sigmoid)
-    l2 = next_layer(l1, w2, sigmoid)
-
-    print(l2, y[i])
-
+if __name__ == '__main__':
+    main()
 
