@@ -2,197 +2,92 @@ import numpy as np
 import pandas as pd
 from data import clean, get_data, clean_and_read
 
+from activation_functions import *
+
+EPOCHS = 100000
+TRAINING_SIZE = 0.7
+
 np.random.seed(1)
 
 
-class Sigmoid:
+def split_data():
+    data = clean_and_read()
+    np.random.shuffle(data)
 
-    @staticmethod
-    def apply(x):
-        return np.array(1 / (1 + np.exp(-x)))
+    training_length = int(len(data) * TRAINING_SIZE)
 
-    @staticmethod
-    def deriv(x):
-        return np.array(x * (1 - x))
+    train = data[:training_length]
+    test = data[training_length:]
 
-
-class TanH:
-    @staticmethod
-    def apply(x):
-        return np.tanh(x)
-
-    @staticmethod
-    def deriv(x):
-        return 1 - np.tanh(x) ** 2
+    return train[:, :-1], train[:, -1:], test[:, :-1], test[:, -1:]
 
 
-class Linear:
-    @staticmethod
-    def apply(x):
-        return np.array(x)
-
-    @staticmethod
-    def deriv(x):
-        return np.array([1])
-
-
-class Adaline:
-    @staticmethod
-    def calculate(expected, prediction):
-        return expected - prediction
-
-    @staticmethod
-    def propagate(x, y):
-        return x.dot(y)
-
-    @staticmethod
-    def update_weights(weights, layer_output, delta, learning_rate):
-        weights += layer_output.T.dot(delta * learning_rate)
-        return weights
-
-
-class GradientDescent:
-    @staticmethod
-    def calculate(expected, prediction):
-        return np.square(expected - prediction)
-
-    @staticmethod
-    def propagate(x, y):
-        return x.dot(y)
-
-    @staticmethod
-    def update_weights(weights, predicted, expected, layer_input, learning_rate, activation):
-        pass
-        # cost_gradient = 2 * (predicted - expected)  # derivative of cost function
-        # print(cost_gradient.shape)
-        # activation_gradient = activation.deriv(predicted)
-        # # print(activation_gradient.shape)
-        # weight_gradient = [[d] for d in layer_input]
-        # # print(weight_gradient.shape)
-        #
-        # return weights - (cost_gradient * activation_gradient * weight_gradient * learning_rate)
-
-
-class Layer(object):
-    def __init__(self, inputs, units, activation, name=''):
-        self.inputs = inputs
-        self.units = units
-        self.activation = activation
-        self.name = name
-
-        # self.weights = 2 * np.random.random((self.inputs, self.units)) - 1
-        self.weights = np.random.normal(0, 0.01, (self.inputs, self.units))
-        self.biases = np.random.normal(0, self.units)
-
-    def activate(self, input_values):
-        # if len(input_values[1]) != self.inputs:
-        #     raise Exception('Input not the correct length. Given {} expected {}'.format(len(input_values), self.inputs))
-
-        return self.activation.apply(np.dot(input_values, self.weights) + self.biases)
-
-    def update(self, weight_delta, bias_delta):
-        self.weights -= weight_delta
-        self.biases -= bias_delta
-
-
-class Network(object):
-    def __init__(self, layers, learning_rate=1e-3):
-        self.layers = layers
+class Network:
+    def __init__(self, structure, learning_rate=0.1):
+        self.structure = structure
         self.learning_rate = learning_rate
-        self.inputs = []
-        self.output = None
 
-    def run(self, data):
-        self.inputs = []
-        self.inputs.append(data)
-        for i, layer in enumerate(self.layers):
-            if i < len(self.layers) - 1:
-                self.inputs.append(layer.activate(self.inputs[-1]))
-            else:
-                self.output = layer.activate(self.inputs[-1])
+        self.layers = []
+        self.synapses = []
+        self.biases = []
 
-        return self.output
+        self.activations = []
 
-    def backpropagate(self, expected):
+        for s in structure:
+            self.activations.append(s[1])
+        for i, (s, activation) in enumerate(structure[:-1]):
+            self.synapses.append(np.random.normal(0, 0.01, (s, structure[i+1][0])))
+            self.biases.append(np.random.normal(0, size=structure[i+1][0]))
 
-        layer_inputs = list(zip(self.layers, self.inputs))
+    def run(self, input_value):
+        self.layers = [input_value]
 
-        # Deal with output
-        prediction = self.output
-        error = prediction - expected
-        d_error = np.array(2 * error)
+        for i, synapse in enumerate(self.synapses):
+            activation = self.activations[i + 1]
+            self.layers.append(activation.apply(np.dot(self.layers[-1], synapse) + self.biases[i]))
 
-        d_activation_o = self.layers[-1].activation.deriv(prediction)
-        d_chain = d_error * d_activation_o * self.inputs[-1]
+        return self.layers[-1]
 
-        weight_delta = np.array([[d] for d in d_chain])
-        bias_delta = d_error * d_activation_o
+    def optimise(self, expected):
+        error = self.layers[-1] - expected
+        deltas = []
 
-        self.layers[-1].update(weight_delta * self.learning_rate, bias_delta * self.learning_rate)
-
-        for l in range(len(self.layers) - 1, 0, -1):
-            layer = self.layers[l-1]
-            d_chain *= layer.activation.deriv(self.inputs[l])
-
-            weight_delta = []
-            for i in range(layer.inputs):
-                tmp = []
-                for d_a in d_chain:
-                    tmp.append(d_a * self.inputs[l - 1][i])
-                weight_delta.append(tmp)
-
-            weight_delta = np.array(weight_delta)
-            bias_delta = d_chain
-            layer.update(weight_delta * self.learning_rate, bias_delta * self.learning_rate)
-        return error
-
-
-INPUT_NODES = 5
-HIDDEN_NODES = 2
-OUTPUT_NODES = 1
-LEARNING_RATE = 1e-1
-TRAINING_PERCENTAGE = 0.7
+        for i, layer in enumerate(reversed(self.layers[1:])):
+            if len(deltas) > 0:
+                error = deltas[-1].dot(self.synapses[-i].T)
+            activation = self.activations[-(i+1)]
+            deltas.append(error * activation.deriv(layer))
+        for s in range(len(self.synapses)):
+            # print(self.synapses[s].shape, (self.layers[s].T.dot(list(reversed(deltas))[s])).shape)
+            self.synapses[s] -= self.learning_rate * (self.layers[s].T.dot(deltas[-(s - 1)]))
+            # print(self.biases[s].shape, deltas[-(s-1)])
+            self.biases[s] -= self.learning_rate * deltas[-(s-1)][0]
 
 
 def main():
-    df = clean_and_read()
-
-    values = df.values
-    np.random.shuffle(values)
-
-    training_length = int(len(values) * TRAINING_PERCENTAGE)
-    train = values[:training_length]
-    test = values[training_length:]
-
-    x_train = train[:, :-1]
-    y_train = train[:, -1:]
-    x_test = test[:, :-1]
-    y_test = test[:, -1:]
-
-    layer_i = Layer(inputs=INPUT_NODES, units=HIDDEN_NODES, activation=Sigmoid, name='input')
-    # layer_h = Layer(inputs=HIDDEN_NODES, units=HIDDEN_NODES, activation=Sigmoid, name='hidden')
-    layer_o = Layer(inputs=HIDDEN_NODES, units=OUTPUT_NODES, activation=Linear, name='output')
-
-    network = Network(layers=[layer_i, layer_o], learning_rate=LEARNING_RATE)
-
-    for i in range(100000):
+    train_x, train_y, test_x, test_y = split_data()
+    # train_x = [[1, 2, 3, 4, 5]]
+    # train_y = [[1]]
+    network = Network([(5, None), (9, Sigmoid), (1, Linear)], learning_rate=0.01)
+    for i in range(EPOCHS):
         errors = []
-        # for x, y in zip(x_train, y_train):
-        _ = network.run(x_train)
-        errors += [network.backpropagate(y_train)]
+        for x, y in zip(train_x, train_y):
+            prediction = network.run(np.array([x]))
+            # print(prediction)
+            network.optimise(np.array([y]))
+            errors.append(prediction - np.array([y]))
         if i % 1000 == 0:
-            error = np.mean(np.abs(errors))
-            print('Average Error: {}'.format(error))
+            print('Error: {}'.format(np.mean(np.abs(errors))))
 
-    predicted = network.run(x_test)
-    error = y_test - predicted
+    test_x = test_x[:5]
+    test_y = test_y[:5]
 
-    print('Error: {}'.format(np.mean(np.abs(error))))
-
-    p = network.run(x_test[-1])
-    error = y_test[-1] - p
-    print('Expected: {} | Predicted: {} | Error: {}%'.format(y_test[-1], p, int(100*(np.abs(error) / y_test[-1]))))
+    for x, y in zip(test_x, test_y):
+        prediction = network.run(np.array([x]))
+        error = prediction - np.array([y])
+        print('Expected: {} | Prediction: {} | Error: {}'.format(y, prediction, error))
 
 
 if __name__ == '__main__':
     main()
+

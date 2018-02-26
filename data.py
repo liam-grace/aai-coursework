@@ -21,5 +21,6 @@ def get_data():
 
 def clean_and_read():
     clean()
-    return get_data()
+    return np.array(get_data())
+
 
