@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib
 from data import clean, get_data, clean_and_read
-from visualise import draw_graph
 
 from activation_functions import *
 
@@ -72,10 +71,6 @@ class Network:
         return self.outputs[-1]
 
     def optimise(self, expected):
-        # mean = np.square(np.subtract(expected, self.outputs[-1])).mean()
-        # error = np.full_like(expected, mean)
-        # mean_error = np.mean(np.abs(error))
-
         error = expected - self.outputs[-1]
 
         lo_delta = error * self.activations[-1].deriv(self.outputs[-1])
@@ -117,7 +112,6 @@ def main():
             error_list.append(error)
             print('Error: {}'.format(np.mean(np.abs(errors))))
 
-    draw_graph(error_list)
 
     test_x = test_x[:5]
     test_y = test_y[:5]
