@@ -1,7 +1,7 @@
 import numpy as np
 from activation_functions import *
 from data import clean, get_data, clean_and_read
-
+np.random.seed(1)
 
 class Layer:
     def __init__(self, inputs, outputs):
@@ -28,8 +28,8 @@ class HiddenLayer(InputLayer):
             activation_function = Sigmoid
         self.activation_values = None
         self.activation_function = activation_function
-        self.weights = np.random.normal(-2/self.inputs, 2/self.inputs, (self.inputs, self.outputs))
-        self.biases = np.random.normal(-2/self.inputs, 2/self.inputs, self.outputs)
+        # self.weights = np.random.normal(-2/self.inputs, 2/self.inputs, (self.inputs, self.outputs))
+        self.weights = np.random.normal(0, 0.01, (self.inputs, self.outputs))
 
     def activate(self, input_value):
         self.values = input_value
@@ -51,37 +51,30 @@ class Network:
         self.learning_rate = learning_rate
 
     def run(self, input_value):
-        input_value = np.array(input_value)
         for l in self.layers:
             input_value = l.activate(input_value)
-        return input_value
+        return np.array(input_value)
 
     def optimise(self, prediction, target):
-        error = (target - prediction)
-        deltas = []
-        b_deltas = []
+        # prediction is the output of the final layer in the network
+        error = 0.5 * np.sum((target - prediction) ** 2)  # change this to plug and play class
+        error_deriv = (target - prediction)
 
         output_layer = self.layers[-1]
-        delta_output = error * output_layer.deriv()
-        deltas.append(delta_output)
-        b_deltas.append(np.sum(delta_output, keepdims=True))
+        output_delta = error_deriv * output_layer.deriv()
 
-        hidden_layers = self.layers[1:-1]
+        deltas = [output_delta]
 
-        for i, l in enumerate(reversed(hidden_layers)):
-            layer_deriv = l.deriv()
-            next_layer_weights = self.layers[i + 2].weights
-            delta = deltas[-1]
-            delta = delta.dot(next_layer_weights.T) * layer_deriv
-            deltas.append(delta)
-            b_deltas.append(np.sum(delta, keepdims=True))
+        for l in range(len(self.layers) - 2, 0, -1):
+            layer = self.layers[l]
+            errors = deltas[-1].dot(self.layers[l + 1].weights.T)
+            deltas.append(errors * layer.deriv())
 
-        self.layers[2].weights += self.layers[1].activation_values.T.dot(deltas[0]) * self.learning_rate
-        self.layers[1].weights += self.layers[0].activation_values.T.dot(deltas[1]) * self.learning_rate
-
-
-
-        return error
+        deltas = list(reversed(deltas))
+        for l, layer in enumerate(self.layers[1:]):
+            weight_change = layer.values.T.dot(deltas[l]) * self.learning_rate
+            layer.weights += weight_change
+        return error_deriv
 
 
 def split_data():
@@ -93,28 +86,38 @@ def split_data():
     train = data[:training_length]
     test = data[training_length:]
 
-    return train[:, 1:6], train[:, -1:], test[:, 1:6], test[:, -1:]
+    return train[:, :5], train[:, -1:], test[:, :5], test[:, -1:]
 
 
 x, y, test_x, test_y = split_data()
 
-l_i = InputLayer(5, 5)
-l_h = HiddenLayer(5, 8, Sigmoid)
-l_o = OutputLayer(8, 1, Sigmoid)
+l_i = InputLayer(6, 6)
+l_h = HiddenLayer(6, 8, Sigmoid)
+l_o = OutputLayer(8, 1, Linear)
 
-n = Network(layers=[l_i, l_h, l_o], learning_rate=0.1)
+n = Network(layers=[l_i, l_h,  l_o], learning_rate=1e-3)
 
-# for _ in range(10000000):
-    # for x_, y_ in zip(x, y):
-    # prediction = n.run(np.array([[2, 2]]))
-    # print(prediction)
-    # error = n.optimise(prediction, np.array([2, 2]))
-    # print(np.abs(np.mean(error)))
+x = x.tolist()
+# bias
+for j in range(len(x)):
+    x[j] += [1]
+x = np.array(x)
 
-for _ in range(10000000):
+test_x = test_x.tolist()
+# bias
+for j in range(len(test_x)):
+    test_x[j] += [1]
+test_x = np.array(test_x)
+
+for i in range(100000):
     errors = []
-    # for _x, _y in zip(x, y):
-    prediction = n.run(np.array(x))
+    prediction = n.run(x)
     error = n.optimise(prediction, np.array(y))
     errors.append(error)
-    print(np.mean(np.abs(error)))
+    if i % 10000 == 0:
+        print(np.mean(np.abs(errors)))
+
+for _x, _y in zip(test_x[0:10], test_y[0:10]):
+    prediction = n.run(np.array([_x]))
+    # error = n.optimise(prediction, np.array([_y]))
+    print('Prediction: {} | Actual: {}'.format(prediction, [_y]))

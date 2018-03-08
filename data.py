@@ -10,7 +10,7 @@ def clean():
 
     df = df.dropna()
 
-    df['month'] = pd.DatetimeIndex(df['Date']).month  # Convert all dates into months
+    # df['month'] = pd.DatetimeIndex(df['Date']).month  # Convert all dates into months
     df = df.drop('Date', axis=1)  # Drop the date column all together
 
     df = df[df.applymap(np.isreal).all(1)]  # Remove all rows with non-numeric data

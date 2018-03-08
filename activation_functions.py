@@ -28,4 +28,4 @@ class Linear:
 
     @staticmethod
     def deriv(x):
-        return 1
+        return np.array(1)
