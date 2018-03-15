@@ -18,15 +18,16 @@ def clean():
     df = df[(df['T'] <= 57) & df['T'] >= -43]  # Remove all data whose temp is above/below records in Cali
     df = df[df['W'] <= 199]  # Remove all data whose wind speeds are above/below records in Cali
 
+    mins_maxes = (df.min(), df.max())
+
     df = (df - df.min()) / (df.max() - df.min())  # Normalise every row to value between [0, 1]
 
-    df.to_csv('normalised-nodate.csv', index=False)
+    return np.array(df), mins_maxes
 
 
 def get_data():
-    return pd.read_csv('normalised-nodate.csv')
+    pass
 
 
 def clean_and_read():
-    clean()
-    return np.array(get_data())
+    return clean()
