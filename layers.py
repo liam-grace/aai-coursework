@@ -2,10 +2,12 @@ import multiprocessing
 from activation_functions import *
 from data import clean, get_data, clean_and_read
 import matplotlib.pyplot as plt
+from logger import log, for_all_methods
 
 np.random.seed(1)
 
 
+@for_all_methods(log)
 class Layer:
     def __init__(self, inputs, outputs):
         self.inputs = inputs
@@ -17,6 +19,7 @@ class Layer:
         raise Exception('Activate not implemented')
 
 
+@for_all_methods(log)
 class InputLayer(Layer):
     def activate(self, input_value):
         self.values = input_value
@@ -24,6 +27,7 @@ class InputLayer(Layer):
         return input_value
 
 
+@for_all_methods(log)
 class HiddenLayer(InputLayer):
     def __init__(self, inputs, outputs, activation_function=None):
         super(HiddenLayer, self).__init__(inputs, outputs)
@@ -55,10 +59,12 @@ class HiddenLayer(InputLayer):
         self.last_weight_delta = delta
 
 
+@for_all_methods(log)
 class OutputLayer(HiddenLayer):
     pass
 
 
+@for_all_methods(log)
 class Network:
     def __init__(self, layers=None, learning_rate=0.1):
         self.layers = layers
